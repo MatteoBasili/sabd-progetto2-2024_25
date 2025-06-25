@@ -1,0 +1,287 @@
+openapi: "3.0.3"
+info:
+  title: Micro Challenger
+  
+  version: "1.0.0"
+  description:
+    This is a tentative specification for the evaluation platform, it is
+    currently subject to change as we finalize the challenger API so it should
+    be taken as a reference, but not as the ground truth.
+    If you find inconsistencies with the evaluation platform contact the organizers.
+  
+paths:
+  /create:
+    post:
+      operationId: createBench
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BenchConfig"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+        "500":
+          description: Internal Server Error
+
+  /start/{bench-id}:
+    post:
+      operationId: startBench
+      parameters:
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        "500":
+          description: Internal Server Error
+
+  /end/{bench-id}:
+    post:
+      operationId: endBench
+      parameters:
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+        "500":
+          description: Internal Server Error
+
+  /next_batch/{bench-id}:
+    get:
+      operationId: nextBatch
+      parameters:
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Next batch contents
+          content:
+            application/msgpack:
+              schema:
+                $ref: "#/components/schemas/Batch"
+        "404":
+          description: No more batches
+        "500":
+          description: Internal Server Error
+
+  /result/{q}/{bench-id}/{batch-id}:
+    post:
+      operationId: postResult
+      parameters:
+        - name: q
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch-id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/msgpack:
+            schema:
+              $ref: "#/components/schemas/QueryResult"
+      responses:
+        "200":
+          description: Result timestamp
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    nullable: true
+        "500":
+          description: Internal Server Error
+
+  /get_result/{q}/{bench-id}/{batch-id}:
+    get:
+      operationId: getResult
+      parameters:
+        - name: q
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch-id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Binary result
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+        "500":
+          description: Internal Server Error
+
+  /plot/{q}/{bench-id}/{batch-id}:
+    get:
+      operationId: plotResult
+      parameters:
+        - name: q
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: bench-id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch-id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SVG plot
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+        "400":
+          description: Bad request
+        "500":
+          description: Internal Server Error
+
+  /history:
+    get:
+      operationId: getHistory
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: string
+        "500":
+          description: Internal Server Error
+
+components:
+  schemas:
+    BenchConfig:
+      type: object
+      properties:
+        apitoken:
+          type: string
+        name:
+          type: string
+          default: ""
+        test:
+          type: boolean
+        queries:
+          type: array
+          items:
+            type: integer
+          default: [0]
+        max_batches:
+          type: integer
+          nullable: true
+      required:
+        - apitoken
+        - test
+
+    Batch:
+      type: object
+      properties:
+        batch_id:
+          type: integer
+        print_id:
+          type: string
+        tile_id:
+          type: integer
+        layer:
+          type: integer
+        tif:
+          type: string
+          format: binary
+      required:
+        - batch_id
+        - print_id
+        - tile_id
+        - layer
+        - tif
+
+    Centroid:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        count:
+          type: integer
+      required:
+        - x
+        - y
+        - count
+
+    QueryResult:
+      type: object
+      properties:
+        batch_id:
+          type: integer
+        query:
+          type: integer
+        print_id:
+          type: string
+        tile_id:
+          type: integer
+        saturated:
+          type: integer
+        centroids:
+          type: array
+          items:
+            $ref: "#/components/schemas/Centroid"
+      required:
+        - batch_id
+        - query
+        - print_id
+        - tile_id
+        - saturated
+        - centroids
