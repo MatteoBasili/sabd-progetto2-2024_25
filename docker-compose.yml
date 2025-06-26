@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  local-challenger:
+    image: micro-challenger:latest  # Use the image loaded from the .tar file
+    ports:
+      - "8866:8866"
+    volumes:
+      - ./local-challenger/data:/data
+    command: ["0.0.0.0:8866", "/data"]
+    networks:
+      - flinknet
+
+
+  jobmanager:
+    image: flink:1.17-scala_2.12
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    volumes:
+      - ./output:/data/output
+    networks:
+      - flinknet
+
+  taskmanager:
+    image: flink:1.17-scala_2.12
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    volumes:
+      - ./output:/data/output
+    networks:
+      - flinknet
+
+  q1-runner:
+    build: ./flink-app/q1-job
+    depends_on:
+      - local-challenger
+      - jobmanager
+    volumes:
+      - ./output:/data/output
+    networks:
+      - flinknet
+    environment:
+      - FLINK_MASTER_HOST=jobmanager
+      - LOCAL_CHALLENGER_URL=http://local-challenger:8866
+
+networks:
+  flinknet:
+    driver: bridge
+
