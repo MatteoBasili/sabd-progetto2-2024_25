@@ -1,0 +1,7 @@
+apache-flink==2.0.0
+requests
+pillow
+numpy
+umsgpack
+kafka-python
+
