@@ -33,10 +33,10 @@ class ChallengerStream(threading.Thread):
                     break
                 batch = umsgpack.unpackb(resp.content)
 
-                # Encode bytes to base64 string
+                # Encode bytes to base64 string (do NOT modify other fields)
                 batch["tif"] = base64.b64encode(batch["tif"]).decode("utf-8")
 
-                # Send to Kafka
+                # Send to Kafka topic "tiff-batches"
                 self.producer.send(self.topic, value=batch)
                 self.producer.flush()
                 print(f"📤 Sent batch {i} to Kafka")
