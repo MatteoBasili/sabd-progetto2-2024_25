@@ -1,0 +1,4 @@
+requests
+umsgpack
+kafka-python
+

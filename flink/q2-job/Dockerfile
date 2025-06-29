@@ -14,13 +14,12 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 WORKDIR /app
 
 # 🔽 Install Python deps
-COPY flink/q1-job/requirements.txt .
+COPY flink/q2-job/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # 📦 Copy app code
-COPY flink/q1-job/q1_job.py .
-COPY flink/q1-job/tiff_client.py .
+COPY flink/q2-job/q2_job.py .
 
 # 📦 Copy Flink Kafka connector jars
 COPY flink/plugins/kafka /opt/flink/plugins/kafka
@@ -29,5 +28,5 @@ COPY flink/plugins/kafka /opt/flink/plugins/kafka
 ENV FLINK_PLUGINS_DIR=/opt/flink/plugins
 
 # 🚀 Run job
-CMD ["python3", "q1_job.py"]
+CMD ["python3", "q2_job.py"]
 
