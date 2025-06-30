@@ -8,6 +8,10 @@ from kafka import KafkaProducer
 from kafka.errors import KafkaError
 import os
 
+## TODO:
+#  riaggiustare il codice affiché spari batches su kafka indefinitamente!
+#  (rimettere il "while True:")
+
 
 def wait_for_kafka_ready(topic="tiff-batches"):
     while True:
@@ -54,7 +58,9 @@ def main():
     session.post(f"{endpoint}/api/start/{bench_id}")
 
     i = 0
-    while True:
+    # Riaggiustare questo!!!
+    while (i < 100):
+    #while True:
         try:
             url = f"{endpoint}/api/next_batch/{bench_id}"
             resp = session.get(url)

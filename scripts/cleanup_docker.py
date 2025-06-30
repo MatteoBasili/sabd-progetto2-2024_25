@@ -15,7 +15,7 @@ def main():
     os.chdir(project_root)
 
     # Step 1: Bring down docker-compose environment with volumes and orphans
-    run("docker-compose down -v --remove-orphans")
+    run("docker compose down -v --remove-orphans")
 
     # Step 2: Remove stopped containers
     run("docker container prune -f")
