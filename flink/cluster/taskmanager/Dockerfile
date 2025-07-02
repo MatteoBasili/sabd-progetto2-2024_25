@@ -7,11 +7,12 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+    
+WORKDIR /app
 
-# Copy requirements
-COPY flink/jobs/requirements.txt .
+COPY flink/jobs /app/jobs
 RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir -r requirements.txt
+    pip3 install --no-cache-dir -r /app/jobs/requirements.txt
     
 # Download flink-python JARs
 RUN wget https://repo1.maven.org/maven2/org/apache/flink/flink-python/2.0.0/flink-python-2.0.0.jar -P /opt/flink/lib/ && \
@@ -19,6 +20,8 @@ RUN wget https://repo1.maven.org/maven2/org/apache/flink/flink-python/2.0.0/flin
 
 # Kafka plugin
 COPY flink/cluster/plugins/kafka /opt/flink/plugins/kafka
+
+ENV PYTHONPATH=/app/jobs
 
 COPY flink/cluster/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

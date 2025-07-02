@@ -28,39 +28,18 @@ def main():
     print("\n⏳ Waiting 15 seconds for containers to stabilize...")
     time.sleep(15)
 
-    # 3. Create Kafka topics using topic-init container
+    # 3. Create Kafka topics using topic-init container; then, stop the container in background
     run("docker exec topic-init python3 /app/create_topics.py")
+    run_background("docker stop topic-init")
 
     # 4. Start batch producer in background
-    producer_proc = run_background("docker exec batch-producer python3 /app/batch_producer.py")
+    run_background("docker exec batch-producer python3 /app/batch_producer.py")
 
-    # 5. Start Flink job Q1 in background
-    q1_proc = run_background("docker exec jobmanager flink run -py /app/q1_job.py")
-
-    # 6. Start Flink job Q2 in background
-    #q2_proc = run_background("docker exec jobmanager flink run -py /app/q2_job.py")
-
-    # 7. Wait for batch producer to finish (likely runs indefinitely)
-    try:
-        producer_proc.wait()
-    except KeyboardInterrupt:
-        print("\n🛑 Stopping batch producer and Flink jobs...")
-
-        # Terminate batch producer
-        producer_proc.terminate()
-        try:
-            producer_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            producer_proc.kill()
-
-        # Terminate flink jobs
-        for proc in [q1_proc]:
-        #for proc in [q1_proc, q2_proc]:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    # 5. Start Flink job in background
+    run_background("docker exec jobmanager flink run -py /app/jobs/l-pbf_job.py")
+    
+    # 6. Start csv writer in background
+    run_background("docker exec csv-writer python3 /app/kafka_to_csv_stream_writer.py")
 
 if __name__ == "__main__":
     main()

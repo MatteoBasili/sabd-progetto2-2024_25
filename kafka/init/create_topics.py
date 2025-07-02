@@ -2,7 +2,7 @@ from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError, NoBrokersAvailable
 import time
 
-BOOTSTRAP_SERVERS = ["kafka1:9092", "kafka2:9092"]
+BOOTSTRAP_SERVERS = ["kafka1:29092", "kafka2:29093"]
 
 TOPICS_TO_CREATE = [
     {
@@ -16,17 +16,12 @@ TOPICS_TO_CREATE = [
         "replication_factor": 1
     },
     {
-        "name": "filtered-batches",
-        "partitions": 1,
-        "replication_factor": 1
-    },
-    {
         "name": "q2-output",
         "partitions": 1,
         "replication_factor": 1
     },
     {
-        "name": "outlier-batches",
+        "name": "l-pbf-output",
         "partitions": 1,
         "replication_factor": 1
     }
