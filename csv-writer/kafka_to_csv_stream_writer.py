@@ -3,6 +3,7 @@ import signal
 import threading
 import logging
 import sys
+import io
 from kafka import KafkaConsumer
 
 logging.basicConfig(
@@ -46,7 +47,6 @@ def consume_topic(topic, output_file, fieldnames):
             try:
                 msg_pack = consumer.poll(timeout_ms=1000)
                 if not msg_pack:
-                    logger.info("No message received during poll")
                     continue
 
                 for tp, messages in msg_pack.items():
@@ -54,11 +54,11 @@ def consume_topic(topic, output_file, fieldnames):
                         line = msg.value
                         logger.info(f"Received message: {line}")
 
-                        values = line.strip().split(',')
+                        # usa csv.reader per rispettare le quote
+                        values = next(csv.reader(io.StringIO(line)))
                         if len(values) != len(fieldnames):
-                            logger.info(f"Row with wrong number of columns: {line}")
+                            logger.warning("Column count mismatch")   # non più .info
                             continue
-
                         row = dict(zip(fieldnames, values))
                         writer.writerow(row)
                         csvfile.flush()
@@ -70,10 +70,10 @@ def consume_topic(topic, output_file, fieldnames):
 
 
 if __name__ == "__main__":
-    q1_fields = ["batch_id", "print_id", "tile_id", "saturated"]
-    q2_fields = ["batch_id", "print_id", "tile_id",
-                 "P1", "dP1", "P2", "dP2", "P3", "dP3",
-                 "P4", "dP4", "P5", "dP5"]
+    q1_fields = ["seq_id", "print_id", "tile_id", "saturated"]
+    q2_fields = ["seq_id", "print_id", "tile_id",
+                 "p_1", "dp_1", "p_2", "dp_2", "p_3", "dp_3",
+                 "p_4", "dp_4", "p_5", "dp_5"]
 
     t1 = threading.Thread(target=consume_topic, args=("q1-output", "/data/output/q1.csv", q1_fields))
     t2 = threading.Thread(target=consume_topic, args=("q2-output", "/data/output/q2.csv", q2_fields))

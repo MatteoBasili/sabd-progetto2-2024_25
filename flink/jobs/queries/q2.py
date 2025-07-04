@@ -4,112 +4,152 @@ import io
 import numpy as np
 from PIL import Image
 import logging
-
-from pyflink.common import Types, Row
-from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext, ListStateDescriptor
-from pyflink.datastream import OutputTag
+from pyflink.common import Row, Types
+from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+from pyflink.datastream.state import ListStateDescriptor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Q2")
 
-THRESHOLD = 6000
-WINDOW_SIZE = 3
+# Parametri
+DISTANCE_THRESHOLD = 2
+OUTLIER_THRESHOLD = 6000
 
-def get_neighbors_coords():
-    coords = []
-    for dx in range(-4, 5):
-        for dy in range(-4, 5):
-            dist = abs(dx) + abs(dy)
-            if 0 <= dist <= 4:
-                coords.append((dx, dy))
-    return coords
 
-NEIGHBORS_0_2 = [p for p in get_neighbors_coords() if 0 <= abs(p[0]) + abs(p[1]) <= 2]
-NEIGHBORS_3_4 = [p for p in get_neighbors_coords() if 2 < abs(p[0]) + abs(p[1]) <= 4]
+def get_padded(image, d, x, y, pad=0.0):
+    if d < 0 or d >= image.shape[0] or x < 0 or x >= image.shape[1] or y < 0 or y >= image.shape[2]:
+        return pad
+    return image[d, x, y]
 
-q2_output_tag = OutputTag('q2-output', Types.ROW([
-    Types.INT(), Types.STRING(), Types.INT(),
-    Types.STRING(), Types.FLOAT(), Types.STRING(), Types.FLOAT(),
-    Types.STRING(), Types.FLOAT(), Types.STRING(), Types.FLOAT(),
-    Types.STRING(), Types.FLOAT()
-]))
+def compute_all_points_and_outliers(image3d, outlier_threshold=OUTLIER_THRESHOLD):
+    depth, width, height = image3d.shape
+    outliers = []
+    all_points = []
 
-outliers_output_tag = OutputTag('outliers-output', Types.STRING())
+    for y in range(height):
+        for x in range(width):
+            pixel_val = image3d[-1, x, y]
+            if pixel_val == 0:
+                continue  # punto vuoto
 
-class SlidingWindowProcessFunction(KeyedProcessFunction):
+            cn_sum, cn_count = 0.0, 0
+            on_sum, on_count = 0.0, 0
+
+            for j in range(-DISTANCE_THRESHOLD, DISTANCE_THRESHOLD + 1):
+                for i in range(-DISTANCE_THRESHOLD, DISTANCE_THRESHOLD + 1):
+                    for d in range(depth):
+                        dist = abs(i) + abs(j) + abs(depth - 1 - d)
+                        if dist <= DISTANCE_THRESHOLD:
+                            val = get_padded(image3d, d, x + i, y + j)
+                            if val > 0:
+                                cn_sum += val
+                                cn_count += 1
+
+            for j in range(-2 * DISTANCE_THRESHOLD, 2 * DISTANCE_THRESHOLD + 1):
+                for i in range(-2 * DISTANCE_THRESHOLD, 2 * DISTANCE_THRESHOLD + 1):
+                    for d in range(depth):
+                        dist = abs(i) + abs(j) + abs(depth - 1 - d)
+                        if DISTANCE_THRESHOLD < dist <= 2 * DISTANCE_THRESHOLD:
+                            val = get_padded(image3d, d, x + i, y + j)
+                            if val > 0:
+                                on_sum += val
+                                on_count += 1
+
+            if cn_count == 0 or on_count == 0:
+                continue
+
+            cn_mean = cn_sum / cn_count
+            on_mean = on_sum / on_count
+            dev = abs(cn_mean - on_mean)
+
+            all_points.append((x, y, dev))
+            if dev > outlier_threshold:
+                outliers.append((x, y, dev))
+
+    return all_points, outliers
+
+class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
+
     def open(self, runtime_context: RuntimeContext):
-        descriptor = ListStateDescriptor("layers_state", Types.PICKLED_BYTE_ARRAY())
-        self.layers_state = runtime_context.get_list_state(descriptor)
-
-    def deserialize_layer(self, b64tif):
-        tif_bytes = base64.b64decode(b64tif)
-        img = Image.open(io.BytesIO(tif_bytes)).convert("I;16")
-        return np.array(img)
-
-    def compute_deviation_per_point(self, layers):
-        h, w = layers[-1].shape
-        arr_3d = np.stack(layers, axis=0)
-        deviations = np.zeros((h, w), dtype=np.float32)
-
-        for x in range(h):
-            for y in range(w):
-                internal_vals = [arr_3d[i, x + dx, y + dy]
-                                 for dx, dy in NEIGHBORS_0_2
-                                 for i in range(WINDOW_SIZE)
-                                 if 0 <= x + dx < h and 0 <= y + dy < w and arr_3d[i, x + dx, y + dy] != 0]
-                external_vals = [arr_3d[i, x + dx, y + dy]
-                                 for dx, dy in NEIGHBORS_3_4
-                                 for i in range(WINDOW_SIZE)
-                                 if 0 <= x + dx < h and 0 <= y + dy < w and arr_3d[i, x + dx, y + dy] != 0]
-
-                if internal_vals and external_vals:
-                    deviations[x, y] = abs(np.mean(internal_vals) - np.mean(external_vals))
-        return deviations
+        list_state_desc = ListStateDescriptor(
+            "window_state",
+            Types.PICKLED_BYTE_ARRAY())  # user pickle for numpy arrays
+        self.window_state = runtime_context.get_list_state(list_state_desc)
 
     def process_element(self, value, ctx):
+        # value è un dict con chiavi batch_id, print_id, tile_id, saturated, arr (numpy array)
         try:
-            data = json.loads(value)
-            batch_id = int(data["batch_id"])
-            print_id = data["print_id"]
-            tile_id = int(data["tile_id"])
-            layer = int(data["layer"])
+            window = list(self.window_state.get())  # recupera stato
 
-            arr = self.deserialize_layer(data["tif"])
+            arr = value['arr']
+            if len(window) == 3:
+                window.pop(0)
+            window.append(arr)
 
-            current_layers = list(self.layers_state.get())
-            if len(current_layers) >= WINDOW_SIZE:
-                current_layers.pop(0)
-            current_layers.append(arr)
+            self.window_state.update(window)
 
-            self.layers_state.clear()
-            for l in current_layers:
-                self.layers_state.add(l)
+            if len(window) < 3:
+                return  # non abbastanza layer ancora
 
-            if len(current_layers) == WINDOW_SIZE:
-                deviations = self.compute_deviation_per_point(current_layers)
-                outliers = [((x, y), float(deviations[x, y]))
-                            for x in range(deviations.shape[0])
-                            for y in range(deviations.shape[1])
-                            if deviations[x, y] > THRESHOLD]
-                outliers.sort(key=lambda tup: tup[1], reverse=True)
-                top5 = outliers[:5]
+            image3d = np.stack(window, axis=0)
+            all_points, outliers = compute_all_points_and_outliers(image3d)
 
-                row_values = [batch_id, print_id, tile_id]
-                for (x, y), dev in top5:
-                    row_values.extend([f"{x}_{y}", dev])
-                for _ in range(5 - len(top5)):
-                    row_values.extend(["", 0.0])
+            top5 = sorted(all_points, key=lambda x: -x[2])[:5]
+            top5_flat = []
+            for p in top5:
+                top5_flat.append(f"({p[0]},{p[1]})")
+                top5_flat.append(f"{round(p[2], 6)}")
+            while len(top5_flat) < 10:
+                top5_flat.append("NA")
+                top5_flat.append("0")
 
-                ctx.output(q2_output_tag, Row(*row_values))
+            row = Row(
+                value['batch_id'],
+                value['print_id'],
+                value['tile_id'],
+                *top5_flat
+            )
 
-                outliers_output = {
-                    "batch_id": batch_id,
-                    "print_id": print_id,
-                    "tile_id": tile_id,
-                    "outliers": [{"x": x, "y": y, "deviation": d} for (x, y), d in outliers]
-                }
-                ctx.output(outliers_output_tag, json.dumps(outliers_output))
+            q3_dict = {
+                "batch_id": str(value['batch_id']),
+                "print_id": value['print_id'],
+                "tile_id": value['tile_id'],
+                "saturated": value['saturated'],
+                "outliers": [{"x": int(x), "y": int(y), "dev": float(dev)} for x, y, dev in outliers]
+            }
+
+            # Emissione tuple (CSV Row, JSON string per Q3)
+            yield (row, json.dumps(q3_dict))
 
         except Exception as e:
-            logger.error(f"Error in Q2 processing: {e}")
+            logger.error(f"[Q2][process_element] Error: {e}")
+
+
+def decode_and_prepare(raw):
+    try:
+        data = json.loads(raw)
+        required = ["batch_id", "print_id", "tile_id", "tif", "saturated"]
+        if not all(k in data for k in required):
+            logger.warning(f"Incomplete input: {data}")
+            return None
+
+        batch_id = int(data["batch_id"])
+        print_id = data["print_id"]
+        tile_id = int(data["tile_id"])
+        saturated = int(data["saturated"])
+
+        tif_bytes = base64.b64decode(data["tif"])
+        img = Image.open(io.BytesIO(tif_bytes)).convert("I;16")
+        arr = np.array(img)
+
+        return {
+            "batch_id": batch_id,
+            "print_id": print_id,
+            "tile_id": tile_id,
+            "saturated": saturated,
+            "arr": arr
+        }
+    except Exception as e:
+        logger.error(f"[Q2][decode_and_prepare] Error: {e}")
+        return None
 

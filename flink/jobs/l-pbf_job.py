@@ -1,12 +1,11 @@
 import json
-import base64
-import io
 import logging
+import csv
+from io import StringIO
 
-from pyflink.common import Configuration, Types, Row
-from pyflink.datastream import StreamExecutionEnvironment, RuntimeExecutionMode, OutputTag
+from pyflink.common import Configuration, Types
+from pyflink.datastream import StreamExecutionEnvironment, RuntimeExecutionMode
 from pyflink.common.watermark_strategy import WatermarkStrategy
-from pyflink.table import StreamTableEnvironment, DataTypes, Schema
 from pyflink.datastream.connectors.kafka import KafkaSource, KafkaSink, KafkaRecordSerializationSchema
 from pyflink.common.serialization import SimpleStringSchema
 
@@ -15,6 +14,14 @@ from queries import q1, q2
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("L-PBF")
+
+def to_csv(row):
+    out = StringIO()
+    #DEBUG#########
+    logger.info(f"to_csv called with row: {row}")
+    #######################
+    csv.writer(out).writerow(row)
+    return out.getvalue().strip()
 
 def main():
     # Flink configuration
@@ -51,34 +58,14 @@ def main():
         ["batch_id", "print_id", "tile_id", "saturated"],
         [Types.INT(), Types.STRING(), Types.INT(), Types.INT()]
     ))
-
-    filtered_batches = processed.map(lambda x: x[1], output_type=Types.MAP(Types.STRING(), Types.STRING()))
-
-    # Q2 processing
-    filtered_batches_str = filtered_batches.map(lambda d: json.dumps(d), output_type=Types.STRING())
-
-    keyed_batches = filtered_batches_str.key_by(
-        lambda x: (int(json.loads(x)["batch_id"]), int(json.loads(x)["tile_id"])),
-        key_type=Types.TUPLE([Types.INT(), Types.INT()])
+ 
+    filtered_batches_json = processed.map(
+        lambda x: json.dumps(x[1]),          
+        output_type=Types.STRING()           
     )
-
-    q2_result = keyed_batches.process(q2.SlidingWindowProcessFunction())
-
-    q2_output_type_info = Types.ROW_NAMED(
-        ["batch_id", "print_id", "tile_id",
-         "P1", "dP1", "P2", "dP2", "P3", "dP3", "P4", "dP4", "P5", "dP5"],
-        [Types.INT(), Types.STRING(), Types.INT(),
-         Types.STRING(), Types.FLOAT(), Types.STRING(), Types.FLOAT(),
-         Types.STRING(), Types.FLOAT(), Types.STRING(), Types.FLOAT(),
-         Types.STRING(), Types.FLOAT()]
-    )
-
-    q2_output_stream = q2_result.get_side_output(q2.q2_output_tag).map(lambda x: x, output_type=q2_output_type_info)
     
-    outliers_stream = q2_result.get_side_output(q2.outliers_output_tag)
-
     # Kafka sink for Q1 results    
-    q1_csv_strings = q1_output.map(lambda t: ",".join(map(str, t)), output_type=Types.STRING())
+    q1_csv_strings = q1_output.map(to_csv, output_type=Types.STRING())
     
     kafka_sink_q1 = KafkaSink.builder() \
         .set_bootstrap_servers(",".join(bootstrap_servers)) \
@@ -91,30 +78,58 @@ def main():
         ).build()
     q1_csv_strings.sink_to(kafka_sink_q1)
 
-    # Kafka sink for Q2 results
-    #kafka_sink_q2 = KafkaSink.builder() \
-     #   .set_bootstrap_servers(",".join(bootstrap_servers)) \
-      #  .set_transactional_id_prefix("q2-output-") \
-       # .set_record_serializer(
-        #    KafkaRecordSerializationSchema.builder()
-         #       .set_topic("q2-output")
-          #      .set_value_serialization_schema(SimpleStringSchema())
-           #     .build()
-        #).build()
-    #q2_output_stream.map(lambda row: ",".join(map(str, row)), output_type=Types.STRING()) \
-     #   .sink_to(kafka_sink_q2)
+    # Q2 processing
+    decoded_stream = filtered_batches_json.map(
+        q2.decode_and_prepare,
+        output_type=Types.PICKLED_BYTE_ARRAY()  # o un tipo generico, pickle numpy array
+    ).filter(lambda x: x is not None)
+    
+    keyed_stream = decoded_stream.key_by(lambda x: (x["print_id"], x["tile_id"]))
+    
+    processed_q2 = keyed_stream.process(
+        q2.SlidingWindowOutlierProcessFunction(),
+        output_type=Types.TUPLE([
+            Types.ROW_NAMED(
+                ["batch_id","print_id","tile_id",
+                 "p1","dp1","p2","dp2","p3","dp3","p4","dp4","p5","dp5"],
+                [Types.INT(), Types.STRING(), Types.INT()] + [Types.STRING(), Types.STRING()] * 5
+            ),
+            Types.STRING()
+        ])
+    )
+    
+    q2_csv_output = processed_q2.map(lambda x: x[0], output_type=Types.ROW_NAMED(
+        ["batch_id","print_id","tile_id","p1","dp1","p2","dp2","p3","dp3","p4","dp4","p5","dp5"],
+        [Types.INT(), Types.STRING(), Types.INT()] + [Types.STRING(), Types.STRING()] * 5
+    ))
 
-    # Kafka sink for outlier JSON
-    #kafka_sink_outliers = KafkaSink.builder() \
-     #   .set_bootstrap_servers(",".join(bootstrap_servers)) \
-      #  .set_transactional_id_prefix("outlier-batches-") \
-       # .set_record_serializer(
-        #    KafkaRecordSerializationSchema.builder()
-         #       .set_topic("outlier-batches")
-          #      .set_value_serialization_schema(SimpleStringSchema())
-           #     .build()
-        #).build()
-    #outliers_stream.sink_to(kafka_sink_outliers)
+    # Kafka sink for Q2 results
+    q2_csv_strings = q2_csv_output.map(to_csv, output_type=Types.STRING())
+    
+    kafka_sink_q2 = KafkaSink.builder() \
+        .set_bootstrap_servers(",".join(bootstrap_servers)) \
+        .set_transactional_id_prefix("q2-output-") \
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+                .set_topic("q2-output")
+                .set_value_serialization_schema(SimpleStringSchema())
+                .build()
+        ).build()
+    
+    q2_csv_strings.sink_to(kafka_sink_q2)
+
+    # Forward to Q3 (raw JSON)
+    #q2_to_q3 = processed_q2.map(lambda x: json.dumps(x[1]), output_type=Types.STRING())
+    #kafka_sink_q2_to_q3 = KafkaSink.builder() \
+        #.set_bootstrap_servers(",".join(bootstrap_servers)) \
+        #.set_transactional_id_prefix("q2-q3-forward-") \
+        #.set_record_serializer(
+         #   KafkaRecordSerializationSchema.builder()
+        #        .set_value_serialization_schema(SimpleStringSchema())
+       #         .set_topic("q2-to-q3")
+      #          .build()
+     #   ).build()
+    #q2_to_q3.sink_to(kafka_sink_q2_to_q3)
 
     env.execute("L-PBF Job")
 

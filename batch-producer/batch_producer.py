@@ -66,7 +66,7 @@ def main():
         return
 
     i = 0
-    while (i < 100):
+    while (i < 90):
     #while True:
         try:
             url = f"{endpoint}/api/next_batch/{bench_id}"

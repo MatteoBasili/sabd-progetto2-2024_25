@@ -54,7 +54,8 @@ def process_batch(raw):
             "print_id": str(data["print_id"]),
             "tile_id": str(tile_id),
             "layer": str(data["layer"]),
-            "tif": filtered_b64
+            "tif": filtered_b64,
+            "saturated": str(saturated) 
         }
 
         return metrics, filtered_dict
