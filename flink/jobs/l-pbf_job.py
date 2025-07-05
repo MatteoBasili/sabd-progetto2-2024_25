@@ -9,7 +9,7 @@ from pyflink.common.watermark_strategy import WatermarkStrategy
 from pyflink.datastream.connectors.kafka import KafkaSource, KafkaSink, KafkaRecordSerializationSchema
 from pyflink.common.serialization import SimpleStringSchema
 
-from queries import q1, q2
+from queries import q1, q2, q3
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +17,7 @@ logger = logging.getLogger("L-PBF")
 
 def to_csv(row):
     out = StringIO()
-    #DEBUG#########
+    ### DEBUG #############
     logger.info(f"to_csv called with row: {row}")
     #######################
     csv.writer(out).writerow(row)
@@ -32,6 +32,7 @@ def main():
 
     env = StreamExecutionEnvironment.get_execution_environment(configuration=config)
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
+    env.set_parallelism(1) 
     env.enable_checkpointing(5000)
 
     # Kafka source
@@ -118,18 +119,31 @@ def main():
     
     q2_csv_strings.sink_to(kafka_sink_q2)
 
-    # Forward to Q3 (raw JSON)
-    #q2_to_q3 = processed_q2.map(lambda x: json.dumps(x[1]), output_type=Types.STRING())
-    #kafka_sink_q2_to_q3 = KafkaSink.builder() \
-        #.set_bootstrap_servers(",".join(bootstrap_servers)) \
-        #.set_transactional_id_prefix("q2-q3-forward-") \
-        #.set_record_serializer(
-         #   KafkaRecordSerializationSchema.builder()
-        #        .set_value_serialization_schema(SimpleStringSchema())
-       #         .set_topic("q2-to-q3")
-      #          .build()
-     #   ).build()
-    #q2_to_q3.sink_to(kafka_sink_q2_to_q3)
+    # Q2 processing
+    q3_rows = processed_q2 \
+        .map(lambda x: x[1],               
+             output_type=Types.STRING()) \
+        .map(q3.process_json,              
+             output_type=Types.ROW_NAMED(
+                 ["batch_id", "print_id", "tile_id", "saturated", "centroids"],
+                 [Types.INT(), Types.STRING(), Types.INT(), Types.INT(), Types.STRING()]
+             )) \
+        .filter(lambda r: r is not None)
+
+    # Kafka sink for Q3 results        
+    q3_csv_strings = q3_rows.map(to_csv, output_type=Types.STRING())
+
+    kafka_sink_q3 = KafkaSink.builder() \
+        .set_bootstrap_servers(",".join(bootstrap_servers)) \
+        .set_transactional_id_prefix("l-pbf-output-") \
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+                .set_topic("l-pbf-output")        
+                .set_value_serialization_schema(SimpleStringSchema())
+                .build()
+        ).build()
+
+    q3_csv_strings.sink_to(kafka_sink_q3)
 
     env.execute("L-PBF Job")
 

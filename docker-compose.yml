@@ -132,12 +132,12 @@ services:
     networks:
       - flinknet
 
-  batch-producer:
+  l-pbf-client:
     build:
       context: .
-      dockerfile: ./batch-producer/Dockerfile
-    container_name: batch-producer
-    hostname: batch-producer
+      dockerfile: ./client/Dockerfile
+    container_name: l-pbf-client
+    hostname: l-pbf-client
     user: root
     depends_on:
       - kafka1

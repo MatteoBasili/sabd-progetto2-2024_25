@@ -4,8 +4,8 @@ USER root
 
 WORKDIR /app
 
-COPY batch-producer/requirements.txt .
+COPY client/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY batch-producer/batch_producer.py /app/batch_producer.py
+COPY client/l-pbf_client.py /app/l-pbf_client.py
 

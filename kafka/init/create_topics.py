@@ -1,6 +1,10 @@
 from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError, NoBrokersAvailable
 import time
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("topic_creator")
 
 BOOTSTRAP_SERVERS = ["kafka1:29092", "kafka2:29093"]
 
@@ -8,22 +12,22 @@ TOPICS_TO_CREATE = [
     {
         "name": "tiff-batches",
         "partitions": 1,
-        "replication_factor": 1
+        "replication_factor": 2
     },
     {
         "name": "q1-output",
         "partitions": 1,
-        "replication_factor": 1
+        "replication_factor": 2
     },
     {
         "name": "q2-output",
         "partitions": 1,
-        "replication_factor": 1
+        "replication_factor": 2
     },
     {
         "name": "l-pbf-output",
         "partitions": 1,
-        "replication_factor": 1
+        "replication_factor": 2
     }
 ]
 
@@ -38,16 +42,16 @@ def create_kafka_topics():
             topic_list.append(topic)
 
         admin.create_topics(new_topics=topic_list, validate_only=False)
-        print("✅ Topics created successfully.")
+        logger.info("✅ Topics created successfully.")
 
     except TopicAlreadyExistsError as e:
-        print(f"⚠️ Some topics already exist: {e}")
+        logger.warning(f"⚠️ Some topics already exist: {e}")
     except NoBrokersAvailable:
-        print("❌ Kafka brokers not available. Retrying in 5 seconds...")
+        logger.error("❌ Kafka brokers not available. Retrying in 5 seconds...")
         time.sleep(5)
         create_kafka_topics()
     except Exception as e:
-        print(f"❌ Error creating topics: {e}")
+        logger.error(f"❌ Error creating topics: {e}")
     finally:
         try:
             admin.close()

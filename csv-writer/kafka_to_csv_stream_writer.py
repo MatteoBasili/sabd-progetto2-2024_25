@@ -6,11 +6,7 @@ import sys
 import io
 from kafka import KafkaConsumer
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("csv_writer")
 
 conf = {
@@ -54,10 +50,9 @@ def consume_topic(topic, output_file, fieldnames):
                         line = msg.value
                         logger.info(f"Received message: {line}")
 
-                        # usa csv.reader per rispettare le quote
                         values = next(csv.reader(io.StringIO(line)))
                         if len(values) != len(fieldnames):
-                            logger.warning("Column count mismatch")   # non più .info
+                            logger.warning("Column count mismatch")  
                             continue
                         row = dict(zip(fieldnames, values))
                         writer.writerow(row)
@@ -74,12 +69,17 @@ if __name__ == "__main__":
     q2_fields = ["seq_id", "print_id", "tile_id",
                  "p_1", "dp_1", "p_2", "dp_2", "p_3", "dp_3",
                  "p_4", "dp_4", "p_5", "dp_5"]
+    q3_fields = ["seq_id", "print_id", "tile_id", "saturated", "centroids"]
 
     t1 = threading.Thread(target=consume_topic, args=("q1-output", "/data/output/q1.csv", q1_fields))
     t2 = threading.Thread(target=consume_topic, args=("q2-output", "/data/output/q2.csv", q2_fields))
+    t3 = threading.Thread(target=consume_topic, args=("l-pbf-output", "/data/output/q3.csv", q3_fields))
 
     t1.start()
     t2.start()
+    t3.start()
 
     t1.join()
     t2.join()
+    t3.join()
+

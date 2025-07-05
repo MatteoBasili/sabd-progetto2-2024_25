@@ -8,63 +8,82 @@ from pyflink.common import Row, Types
 from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
 from pyflink.datastream.state import ListStateDescriptor
 
+from functools import lru_cache
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Q2")
 
-# Parametri
+# Params
 DISTANCE_THRESHOLD = 2
+OUTER_THRESHOLD = 2 * DISTANCE_THRESHOLD
 OUTLIER_THRESHOLD = 6000
 
 
-def get_padded(image, d, x, y, pad=0.0):
-    if d < 0 or d >= image.shape[0] or x < 0 or x >= image.shape[1] or y < 0 or y >= image.shape[2]:
-        return pad
-    return image[d, x, y]
+def _shift2d(mat: np.ndarray, dx: int, dy: int) -> np.ndarray:
+    """Shifts the 2-D matrix by dx rows and dy columns with padding to 0 (no wrap-around)."""
+    h, w = mat.shape
+    pad_x = (max(dx, 0), max(-dx, 0))
+    pad_y = (max(dy, 0), max(-dy, 0))
+    tmp = np.pad(mat, (pad_x, pad_y), constant_values=0)
+    return tmp[pad_x[1]:pad_x[1]+h, pad_y[1]:pad_y[1]+w]
 
-def compute_all_points_and_outliers(image3d, outlier_threshold=OUTLIER_THRESHOLD):
+@lru_cache(maxsize=None)
+def _generate_offsets(depth: int):
+    """Returns two lists of (d, dx, dy) for the inner and outer ring."""
+    inner, outer = [], []
+    max_d = depth - 1                               # reference layer
+    for d in range(depth):
+        for dx in range(-OUTER_THRESHOLD, OUTER_THRESHOLD + 1):
+            for dy in range(-OUTER_THRESHOLD, OUTER_THRESHOLD + 1):
+                dist = abs(dx) + abs(dy) + abs(max_d - d)
+                if dist <= DISTANCE_THRESHOLD:
+                    inner.append((d, dx, dy))
+                elif dist <= OUTER_THRESHOLD:
+                    outer.append((d, dx, dy))
+    return inner, outer
+
+def compute_all_points_and_outliers(image3d: np.ndarray,
+                                         outlier_threshold: float = OUTLIER_THRESHOLD):
+    """
+    Vectorized version - no loop on (x, y).
+    image3d shape: (depth, width, height)
+    """
     depth, width, height = image3d.shape
-    outliers = []
-    all_points = []
+    inner_off, outer_off = _generate_offsets(depth)
 
-    for y in range(height):
-        for x in range(width):
-            pixel_val = image3d[-1, x, y]
-            if pixel_val == 0:
-                continue  # punto vuoto
+    # 2-D accumulators
+    cn_sum   = np.zeros((width, height), dtype=np.float64)
+    cn_count = np.zeros_like(cn_sum,        dtype=np.int32)
+    on_sum   = cn_sum.copy()
+    on_count = cn_count.copy()
 
-            cn_sum, cn_count = 0.0, 0
-            on_sum, on_count = 0.0, 0
+    # inner ring ----------------------------------------------------------
+    for d, dx, dy in inner_off:
+        slice2d = image3d[d]
+        shifted = _shift2d(slice2d, dx, dy)
+        mask = shifted > 0
+        cn_sum   += shifted * mask
+        cn_count += mask
 
-            for j in range(-DISTANCE_THRESHOLD, DISTANCE_THRESHOLD + 1):
-                for i in range(-DISTANCE_THRESHOLD, DISTANCE_THRESHOLD + 1):
-                    for d in range(depth):
-                        dist = abs(i) + abs(j) + abs(depth - 1 - d)
-                        if dist <= DISTANCE_THRESHOLD:
-                            val = get_padded(image3d, d, x + i, y + j)
-                            if val > 0:
-                                cn_sum += val
-                                cn_count += 1
+    # outer ring ----------------------------------------------------------
+    for d, dx, dy in outer_off:
+        slice2d = image3d[d]
+        shifted = _shift2d(slice2d, dx, dy)
+        mask = shifted > 0
+        on_sum   += shifted * mask
+        on_count += mask
 
-            for j in range(-2 * DISTANCE_THRESHOLD, 2 * DISTANCE_THRESHOLD + 1):
-                for i in range(-2 * DISTANCE_THRESHOLD, 2 * DISTANCE_THRESHOLD + 1):
-                    for d in range(depth):
-                        dist = abs(i) + abs(j) + abs(depth - 1 - d)
-                        if DISTANCE_THRESHOLD < dist <= 2 * DISTANCE_THRESHOLD:
-                            val = get_padded(image3d, d, x + i, y + j)
-                            if val > 0:
-                                on_sum += val
-                                on_count += 1
+    # deviation --------------------------------------------------------------
+    valid   = (cn_count > 0) & (on_count > 0) & (image3d[-1] > 0)
+    cn_mean = np.divide(cn_sum, cn_count, where=cn_count > 0)
+    on_mean = np.divide(on_sum, on_count, where=on_count > 0)
+    dev     = np.abs(cn_mean - on_mean)
 
-            if cn_count == 0 or on_count == 0:
-                continue
-
-            cn_mean = cn_sum / cn_count
-            on_mean = on_sum / on_count
-            dev = abs(cn_mean - on_mean)
-
-            all_points.append((x, y, dev))
-            if dev > outlier_threshold:
-                outliers.append((x, y, dev))
+    xs, ys        = np.where(valid)
+    all_points    = list(zip(xs, ys, dev[valid]))
+    outlier_mask  = valid & (dev > outlier_threshold)
+    xo, yo        = np.where(outlier_mask)
+    outliers      = list(zip(xo, yo, dev[outlier_mask]))
 
     return all_points, outliers
 
@@ -73,13 +92,13 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
     def open(self, runtime_context: RuntimeContext):
         list_state_desc = ListStateDescriptor(
             "window_state",
-            Types.PICKLED_BYTE_ARRAY())  # user pickle for numpy arrays
+            Types.PICKLED_BYTE_ARRAY()) 
         self.window_state = runtime_context.get_list_state(list_state_desc)
 
     def process_element(self, value, ctx):
-        # value è un dict con chiavi batch_id, print_id, tile_id, saturated, arr (numpy array)
+        # value is a dict with keys batch_id, print_id, tile_id, saturated, arr (numpy array)
         try:
-            window = list(self.window_state.get())  # recupera stato
+            window = list(self.window_state.get())  # retrieve state
 
             arr = value['arr']
             if len(window) == 3:
@@ -89,7 +108,7 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
             self.window_state.update(window)
 
             if len(window) < 3:
-                return  # non abbastanza layer ancora
+                return  # not enough layers yet
 
             image3d = np.stack(window, axis=0)
             all_points, outliers = compute_all_points_and_outliers(image3d)
@@ -118,7 +137,7 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
                 "outliers": [{"x": int(x), "y": int(y), "dev": float(dev)} for x, y, dev in outliers]
             }
 
-            # Emissione tuple (CSV Row, JSON string per Q3)
+            # Output tuples (CSV Row, JSON string for Q3)
             yield (row, json.dumps(q3_dict))
 
         except Exception as e:
@@ -152,4 +171,3 @@ def decode_and_prepare(raw):
     except Exception as e:
         logger.error(f"[Q2][decode_and_prepare] Error: {e}")
         return None
-
