@@ -11,31 +11,15 @@ import subprocess
 import time
 import os
 import argparse
-
-### For metrics evaluation ###
+import requests
 import json
 
 JOB_NAME = "L-PBF Job"
+
+### For metrics evaluation ###
 OUTPUT = "./Results/analysis/metrics.csv"
 INTERVAL_IN_SECONDS = 1
 DURATION_IN_SECONDS = 300
-
-def get_job_id(job_name: str, sleep_s: float = 1.0) -> str:
-    while True:
-        try:
-            jobs_json = subprocess.check_output(
-                "curl -s localhost:8081/jobs/overview",
-                shell=True,
-                text=True,
-            )
-            for job in json.loads(jobs_json)["jobs"]:
-                if job["name"] == job_name:          
-                    if job["state"] == "RUNNING":    
-                        return job["jid"]
-        except Exception as e:
-            print(f"⚠️  get_job_id(): error {e}, trying again…")
-            pass
-        time.sleep(sleep_s)
 ##############################
 
 
@@ -56,6 +40,48 @@ def run(cmd):
         print(f"❌ Command failed: {cmd}")
         exit(1)
 
+def get_job_id(job_name: str, sleep_s: float = 1.0) -> str:
+    while True:
+        try:
+            jobs_json = subprocess.check_output(
+                "curl -s localhost:8081/jobs/overview",
+                shell=True,
+                text=True,
+            )
+            for job in json.loads(jobs_json)["jobs"]:
+                if job["name"] == job_name:          
+                    if job["state"] == "RUNNING":    
+                        return job["jid"]
+        except Exception as e:
+            print(f"⚠️  get_job_id(): error {e}, trying again…")
+            pass
+        time.sleep(sleep_s)
+
+def wait_vertices_ready(host: str, port: int, job_id: str,
+                        ok_state=("RUNNING"),
+                        poll_int=2.0):
+    """
+    Waits for *all* vertices of job_id to be running.
+    """
+    base_url = f"http://{host}:{port}"
+
+    while True:
+        try:
+            data = requests.get(f"{base_url}/jobs/{job_id}",
+                                timeout=3).json()
+            states = {v["name"]: v["status"] for v in data.get("vertices", [])}
+            pending = {n: s for n, s in states.items() if s not in ok_state}
+
+            if not pending:
+                print("✅ All vertices are RUNNING")
+                return
+            else:
+                print(f"⏳ Vertex not ready yet: {pending}")
+        except Exception as e:
+            print(f"⚠️  /vertices not ready yet: {e}")
+
+        time.sleep(poll_int)
+
 def main():
     parser = argparse.ArgumentParser(description="Launcher for L‑PBF pipeline")
     parser.add_argument("--limit", type=positive_int,
@@ -72,30 +98,16 @@ def main():
     run(f"docker exec topic-init python3 /app/create_topics.py")
     run("docker stop topic-init")
 
-    # 2. Start Flink job (blocking until REST reports it as RUNNING)
+    # 2. Start Flink job
     flink_job_cmd = (
         "docker exec jobmanager "
         "flink run -py /app/jobs/l-pbf_job.py --detached"
     )
     run(flink_job_cmd)
 
-    # 🔄 2.b  Wait until the job appears in Flink REST
-    print("\n⏳ Waiting for Flink job to reach RUNNING state...")
-    while True:
-        try:
-            out = subprocess.check_output(
-                "curl -s localhost:8081/jobs/overview | jq '.jobs[0].state'",
-                shell=True,
-                text=True
-            ).strip('" \n')
-            if out == "RUNNING":
-                print("✅ Flink job is RUNNING")
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-    else:
-        print("⚠️  Job not RUNNING yet...")
+    # 🔄 2.b  Wait until the job is completely ready
+    job_id = get_job_id(JOB_NAME)
+    wait_vertices_ready(host="localhost", port=8081, job_id=job_id)
     
     # 3. Start csv writer in background (disable it for performance evaluation)
     run_background("docker exec csv-writer python3 /app/kafka_to_csv_stream_writer.py")
@@ -115,16 +127,14 @@ def main():
     ### For metrics evaluation ###
     #run_background(client_cmd)
     
-    #job_id = get_job_id(JOB_NAME)
-    
     #flink_evaluation_cmd = (
-     #   "python3 ./scripts/analysis/flink_metrics_collector.py "
-      #  f"--job-id {job_id} "
-       # "--host localhost --port 8081 "
+        #"python3 ./scripts/analysis/flink_metrics_collector.py "
+        #f"--job-id {job_id} "
+        #"--host localhost --port 8081 "
         #f"--interval {INTERVAL_IN_SECONDS} "
-        #"--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
-        #f"--output {OUTPUT} "
-        #f"--duration {DURATION_IN_SECONDS}"
+       # "--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
+      #  f"--output {OUTPUT} "
+     #   f"--duration {DURATION_IN_SECONDS}"
     #)
     #run(flink_evaluation_cmd)
     ##############################
