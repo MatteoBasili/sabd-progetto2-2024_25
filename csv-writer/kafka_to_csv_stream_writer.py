@@ -2,7 +2,6 @@ import csv
 import signal
 import threading
 import logging
-import sys
 import io
 from kafka import KafkaConsumer
 

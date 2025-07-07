@@ -18,7 +18,7 @@ logger = logging.getLogger("L-PBF")
 def to_csv(row):
     out = StringIO()
     ### DEBUG #############
-    logger.info(f"to_csv called with row: {row}")
+    #logger.info(f"to_csv called with row: {row}")
     #######################
     csv.writer(out).writerow(row)
     return out.getvalue().strip()
@@ -27,12 +27,12 @@ def main():
     # Flink configuration
     config = Configuration()
     config.set_string("pipeline.jars", "file:///opt/flink/plugins/kafka/flink-sql-connector-kafka-4.0.0-2.0.jar")
-    config.set_string("state.backend", "hashmap")
+    config.set_string("state.backend", "rocksdb")
     config.set_string("state.checkpoints.dir", "file:///tmp/flink-checkpoints")
 
     env = StreamExecutionEnvironment.get_execution_environment(configuration=config)
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
-    env.set_parallelism(1) 
+    #env.set_parallelism(2) 
     env.enable_checkpointing(5000)
 
     # Kafka source
@@ -73,8 +73,8 @@ def main():
         .set_transactional_id_prefix("q1-output-") \
         .set_record_serializer(
             KafkaRecordSerializationSchema.builder()
-                .set_value_serialization_schema(SimpleStringSchema())
                 .set_topic("q1-output")
+                .set_value_serialization_schema(SimpleStringSchema())
                 .build()
         ).build()
     q1_csv_strings.sink_to(kafka_sink_q1)
@@ -82,7 +82,7 @@ def main():
     # Q2 processing
     decoded_stream = filtered_batches_json.map(
         q2.decode_and_prepare,
-        output_type=Types.PICKLED_BYTE_ARRAY()  # o un tipo generico, pickle numpy array
+        output_type=Types.PICKLED_BYTE_ARRAY()
     ).filter(lambda x: x is not None)
     
     keyed_stream = decoded_stream.key_by(lambda x: (x["print_id"], x["tile_id"]))
@@ -138,7 +138,7 @@ def main():
         .set_transactional_id_prefix("l-pbf-output-") \
         .set_record_serializer(
             KafkaRecordSerializationSchema.builder()
-                .set_topic("l-pbf-output")        
+                .set_topic("l-pbf-output")      
                 .set_value_serialization_schema(SimpleStringSchema())
                 .build()
         ).build()

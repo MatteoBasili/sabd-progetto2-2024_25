@@ -84,7 +84,8 @@ def produce_batches(session, endpoint, bench_id, producer, limit=None):
         batch = umsgpack.unpackb(resp.content)
         # Base64 encoding to make it JSON-safe
         batch["tif"] = base64.b64encode(batch["tif"]).decode("utf-8")
-        producer.send(TOPIC_INPUT, value=batch)
+        partition_key = f"{batch['print_id']}-{batch['tile_id']}".encode("utf-8")
+        producer.send(TOPIC_INPUT, key=partition_key, value=batch)
         producer.flush()
         logger.info(f"📤 Sent batch {produced} (layer {batch.get('layer')}) to Kafka")
         produced += 1
@@ -93,7 +94,7 @@ def produce_batches(session, endpoint, bench_id, producer, limit=None):
     logger.info(f"📦 Total batches produced: {produced}")
     return produced
 
-def consume_and_post_results(endpoint, bench_id, expected_results=None):
+def consume_and_post_results(endpoint, bench_id, expected_results):
     session = requests.Session()
     consumer = KafkaConsumer(
         TOPIC_OUTPUT,
@@ -154,28 +155,9 @@ def main():
     parser = argparse.ArgumentParser(description="Kafka client for DEBS GC")
     parser.add_argument("--limit", type=positive_int,
                         help="Maximum number of batches to process")
-    parser.add_argument("--tiles-per-layer", type=positive_int,
-                        help="Number of tiles composing ONE layer "
-                             "(required if --limit is set)")
     args = parser.parse_args()
 
     limit            = args.limit
-    tiles_per_layer  = args.tiles_per_layer
-
-    if limit is not None and tiles_per_layer is None:
-        parser.error("--tiles-per-layer is required when --limit is set")
-
-    expected_results = None
-    if limit is not None:
-        expected_results = limit - (2 * tiles_per_layer)
-        if expected_results <= 0:
-            logger.error(
-                f"❌ Configuration error: limit={limit}, tiles_per_layer={tiles_per_layer} "
-                f"⇒ expected_results = {expected_results} ≤ 0\n"
-                f"🔁 Increase --limit so that it is > 2 * tiles_per_layer "
-                f"(i.e. > {2*tiles_per_layer})."
-            )
-            exit(1)
 
     endpoint = os.getenv("LOCAL_CHALLENGER_URL", "http://local-challenger:8866")
 
@@ -188,6 +170,8 @@ def main():
 
     # Step 2: Produce batches to Kafka
     produced_batches = produce_batches(session, endpoint, bench_id, producer, limit=limit)
+
+    expected_results = produced_batches
 
     # Step 3: Consume results from Kafka and send them to local-challenger
     consume_and_post_results(endpoint, bench_id, expected_results=expected_results)

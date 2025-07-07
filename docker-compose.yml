@@ -42,6 +42,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
     networks:
       - flinknet
 
@@ -62,6 +64,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,INTERNAL://0.0.0.0:29093
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
     networks:
       - flinknet
 
@@ -108,7 +112,7 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
       - FLINK_PLUGINS_DIR=/opt/flink/plugins
-      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
+      #- TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
     volumes:
       - ./flink/checkpoints:/tmp/flink-checkpoints
     networks:
@@ -126,7 +130,7 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
       - FLINK_PLUGINS_DIR=/opt/flink/plugins
-      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
+      #- TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
     volumes:
       - ./flink/checkpoints:/tmp/flink-checkpoints
     networks:
