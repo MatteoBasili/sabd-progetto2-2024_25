@@ -13,6 +13,8 @@ import os
 import argparse
 
 ### For metrics evaluation ###
+import json
+
 JOB_NAME = "L-PBF Job"
 OUTPUT = "./Results/analysis/metrics.csv"
 INTERVAL_IN_SECONDS = 1
@@ -21,9 +23,8 @@ DURATION_IN_SECONDS = 300
 def get_job_id(job_name: str, sleep_s: float = 1.0) -> str:
     while True:
         try:
-            # restituisce la lista dei job noti al JobManager
             jobs_json = subprocess.check_output(
-                "curl -s jobmanager:8081/jobs/overview",
+                "curl -s localhost:8081/jobs/overview",
                 shell=True,
                 text=True,
             )
@@ -31,10 +32,10 @@ def get_job_id(job_name: str, sleep_s: float = 1.0) -> str:
                 if job["name"] == job_name:          
                     if job["state"] == "RUNNING":    
                         return job["jid"]
-        except Exception:
+        except Exception as e:
+            print(f"⚠️  get_job_id(): error {e}, trying again…")
             pass
         time.sleep(sleep_s)
-    print(f"❌  Impossibile trovare un job RUNNING con nome “{job_name}”", file=sys.stderr)
 ##############################
 
 
@@ -69,7 +70,7 @@ def main():
 
     # 1. Create Kafka topics using topic-init container; then, stop the container
     run(f"docker exec topic-init python3 /app/create_topics.py")
-    run_background("docker stop topic-init")
+    run("docker stop topic-init")
 
     # 2. Start Flink job (blocking until REST reports it as RUNNING)
     flink_job_cmd = (
@@ -83,7 +84,7 @@ def main():
     while True:
         try:
             out = subprocess.check_output(
-                "curl -s jobmanager:8081/jobs/overview | jq '.jobs[0].state'",
+                "curl -s localhost:8081/jobs/overview | jq '.jobs[0].state'",
                 shell=True,
                 text=True
             ).strip('" \n')
@@ -97,7 +98,11 @@ def main():
         print("⚠️  Job not RUNNING yet...")
     
     # 3. Start csv writer in background (disable it for performance evaluation)
-    #run_background("docker exec csv-writer python3 /app/kafka_to_csv_stream_writer.py")
+    run_background("docker exec csv-writer python3 /app/kafka_to_csv_stream_writer.py")
+    
+    ### For metrics evaluation ###
+    #run("docker stop csv-writer")
+    ##############################
         
     time.sleep(5)    
         
@@ -106,21 +111,22 @@ def main():
     if limit is not None:
         client_cmd += f" --limit {limit}"
     run(client_cmd)
+    
     ### For metrics evaluation ###
     #run_background(client_cmd)
     
-    job_id = get_job_id(JOB_NAME)
+    #job_id = get_job_id(JOB_NAME)
     
-    flink_evaluation_cmd = (
-        "python3 /scripts/analysis/flink_metrics_collector.py "
-        f"--job-id {job_id} "
-        "--host localhost --port 8081 "
-        f"--interval {INTERVAL_IN_SECONDS} "
-        "--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
-        f"--output {OUTPUT} "
-        f"--duration {DURATION_IN_SECONDS}"
-    )
-    run(flink_evaluation_cmd)
+    #flink_evaluation_cmd = (
+     #   "python3 ./scripts/analysis/flink_metrics_collector.py "
+      #  f"--job-id {job_id} "
+       # "--host localhost --port 8081 "
+        #f"--interval {INTERVAL_IN_SECONDS} "
+        #"--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
+        #f"--output {OUTPUT} "
+        #f"--duration {DURATION_IN_SECONDS}"
+    #)
+    #run(flink_evaluation_cmd)
     ##############################
 
 if __name__ == "__main__":

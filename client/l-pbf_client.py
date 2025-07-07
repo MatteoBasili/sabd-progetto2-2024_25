@@ -104,7 +104,7 @@ def producer_loop(session, endpoint, bench_id, producer, limit):
     done_event.set()
     logger.info(f"🔚 Producer finished ({produced_count} batches)")
 
-def consume_and_post_results(endpoint, bench_id):
+def consumer_loop(endpoint, bench_id):
     global received_count
     session = requests.Session()
     consumer = KafkaConsumer(
@@ -164,7 +164,7 @@ def consume_and_post_results(endpoint, bench_id):
         
         
     consumer.close()
-    logger.info(f"📦 Results posted: {received}")
+    logger.info(f"📦 Results posted: {received_count}")
 
 def main():
     parser = argparse.ArgumentParser(description="Kafka client for DEBS GC")

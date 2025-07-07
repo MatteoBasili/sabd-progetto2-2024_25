@@ -32,7 +32,7 @@ def main():
     config.set_string("state.checkpoints.dir", "file:///tmp/flink-checkpoints")
     
     ### For metrics evaluation ###
-    config.set_string("metrics.latency.interval", "1000")  # ogni 1 secondo
+    #config.set_string("metrics.latency.interval", "1000")  # ogni 1 secondo
     ##############################
 
     env = StreamExecutionEnvironment.get_execution_environment(configuration=config)
