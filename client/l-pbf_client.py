@@ -84,8 +84,7 @@ def produce_batches(session, endpoint, bench_id, producer, limit=None):
         batch = umsgpack.unpackb(resp.content)
         # Base64 encoding to make it JSON-safe
         batch["tif"] = base64.b64encode(batch["tif"]).decode("utf-8")
-        partition_key = f"{batch['print_id']}-{batch['tile_id']}".encode("utf-8")
-        producer.send(TOPIC_INPUT, key=partition_key, value=batch)
+        producer.send(TOPIC_INPUT, value=batch)
         producer.flush()
         logger.info(f"📤 Sent batch {produced} (layer {batch.get('layer')}) to Kafka")
         produced += 1
