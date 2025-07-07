@@ -128,13 +128,13 @@ def main():
     #run_background(client_cmd)
     
     #flink_evaluation_cmd = (
-        #"python3 ./scripts/analysis/flink_metrics_collector.py "
-        #f"--job-id {job_id} "
-        #"--host localhost --port 8081 "
+     #   "python3 ./scripts/analysis/flink_metrics_collector.py "
+      #  f"--job-id {job_id} "
+       # "--host localhost --port 8081 "
         #f"--interval {INTERVAL_IN_SECONDS} "
-       # "--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
-      #  f"--output {OUTPUT} "
-     #   f"--duration {DURATION_IN_SECONDS}"
+        #"--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
+        #f"--output {OUTPUT} "
+        #f"--duration {DURATION_IN_SECONDS}"
     #)
     #run(flink_evaluation_cmd)
     ##############################

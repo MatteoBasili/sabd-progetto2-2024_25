@@ -1,3 +1,0 @@
-timestamp,vertex_id,vertex_name,numRecordsInPerSecond,numRecordsOutPerSecond,latency
-2025-07-07T16:00:02,cbc357ccb763df2852fee8c4fc7d55f2,"Source: KafkaSource -> Map, Filter -> (Map, Map -> Sink: Writer -> Sink: Committer, Map, Map, Filter, _stream_key_by_map_operator)",,,
-2025-07-07T16:00:02,6ce2b53bb3276b6a824089e56c610099,"KEYED PROCESS -> (Map, Map -> Sink: Writer -> Sink: Committer, Map, Map, Filter, Map -> Sink: Writer -> Sink: Committer)",,,

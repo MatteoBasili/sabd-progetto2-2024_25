@@ -64,12 +64,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def discover_vertices(base_url: str, job_id: str) -> Dict[str, str]:
-    url = f"{base_url}/jobs/{job_id}"
-    while True:
-        data = get_json(url)
-        if data and "vertices" in data:
-            return {v["id"]: v["name"] for v in data["vertices"]}
-        time.sleep(1)        
+    """Return dict {vertex_id: vertex_name}."""
+    data = get_json(f"{base_url}/jobs/{job_id}/vertices")
+    if data is None or "vertices" not in data:
+        print("[ERROR] Failed to discover vertices. Is the Job ID correct?", file=sys.stderr)
+        sys.exit(1)
+    return {v["id"]: v["name"] for v in data["vertices"]}
+
 
 def collect_metrics(
     base_url: str,
@@ -87,7 +88,7 @@ def collect_metrics(
         while True:
             now_iso = dt.datetime.utcnow().isoformat(timespec="seconds")
             for v_id, v_name in vertices.items():
-                url = f"{base_url}/jobs/{job_id}/{v_id}/metrics?get={metric_query}"
+                url = f"{base_url}/jobs/{job_id}/vertices/{v_id}/metrics?get={metric_query}"
                 values = {m["id"]: m.get("value") for m in (get_json(url) or [])}
                 row = {"timestamp": now_iso, "vertex_id": v_id, "vertex_name": v_name}
                 row.update({metric: values.get(metric, "") for metric in metrics})
