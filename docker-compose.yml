@@ -164,7 +164,7 @@ services:
       - kafka1
       - kafka2
     volumes:
-      - ./output:/data/output
+      - ./Results:/data/output
     command: ["tail", "-f", "/dev/null"]
     networks:
       - flinknet
