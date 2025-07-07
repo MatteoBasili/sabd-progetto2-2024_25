@@ -15,6 +15,7 @@ from queries import q1, q2, q3
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("L-PBF")
 
+
 def to_csv(row):
     out = StringIO()
     ### DEBUG #############
@@ -29,6 +30,10 @@ def main():
     config.set_string("pipeline.jars", "file:///opt/flink/plugins/kafka/flink-sql-connector-kafka-4.0.0-2.0.jar")
     config.set_string("state.backend", "rocksdb")
     config.set_string("state.checkpoints.dir", "file:///tmp/flink-checkpoints")
+    
+    ### For metrics evaluation ###
+    config.set_string("metrics.latency.interval", "1000")  # ogni 1 secondo
+    ##############################
 
     env = StreamExecutionEnvironment.get_execution_environment(configuration=config)
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
@@ -77,6 +82,7 @@ def main():
                 .set_value_serialization_schema(SimpleStringSchema())
                 .build()
         ).build()
+        
     q1_csv_strings.sink_to(kafka_sink_q1)
 
     # Q2 processing

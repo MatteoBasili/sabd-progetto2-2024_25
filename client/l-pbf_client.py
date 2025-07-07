@@ -1,3 +1,4 @@
+import threading
 import argparse
 import os
 import json
@@ -18,6 +19,10 @@ TOPIC_INPUT = "tiff-batches"
 TOPIC_OUTPUT = "l-pbf-output"
 GROUP_ID = "result-consumer"
 
+produced_count  = 0          
+received_count  = 0          
+count_lock      = threading.Lock()
+done_event      = threading.Event()
 
 def positive_int(value: str) -> int:
     ivalue = int(value)
@@ -92,8 +97,15 @@ def produce_batches(session, endpoint, bench_id, producer, limit=None):
         
     logger.info(f"📦 Total batches produced: {produced}")
     return produced
+    
+def producer_loop(session, endpoint, bench_id, producer, limit):
+    global produced_count
+    produced_count = produce_batches(session, endpoint, bench_id, producer, limit)
+    done_event.set()
+    logger.info(f"🔚 Producer finished ({produced_count} batches)")
 
-def consume_and_post_results(endpoint, bench_id, expected_results):
+def consume_and_post_results(endpoint, bench_id):
+    global received_count
     session = requests.Session()
     consumer = KafkaConsumer(
         TOPIC_OUTPUT,
@@ -104,9 +116,8 @@ def consume_and_post_results(endpoint, bench_id, expected_results):
     )
 
     logger.info("🕓 Waiting for results from Flink...")
-    received = 0
     
-    while received < expected_results:
+    while True:
         msg_pack = consumer.poll(timeout_ms=1000)  # wait max 1s for a message
 
         if not msg_pack:
@@ -144,7 +155,12 @@ def consume_and_post_results(endpoint, bench_id, expected_results):
                 except Exception as e:
                     logger.error(f"❌ Failed to post result: {e}")
             
-                received += 1
+                with count_lock:
+                    received_count += 1
+                    
+        with count_lock:
+            if done_event.is_set() and received_count >= produced_count:
+                break
         
         
     consumer.close()
@@ -167,15 +183,24 @@ def main():
     # Step 1: Initialize benchmark
     bench_id = initialize_benchmark(session, endpoint, limit=limit)
 
-    # Step 2: Produce batches to Kafka
-    produced_batches = produce_batches(session, endpoint, bench_id, producer, limit=limit)
+    # Step 2: Produce batches to Kafka and consume results from Kafka and send them to local-challenger
+    prod_thr = threading.Thread(
+        target=producer_loop,
+        args=(session, endpoint, bench_id, producer, limit),
+        daemon=True,
+    )
+    cons_thr = threading.Thread(
+        target=consumer_loop,
+        args=(endpoint, bench_id),
+        daemon=True,
+    )
+    prod_thr.start()
+    cons_thr.start()
 
-    expected_results = produced_batches
+    prod_thr.join()
+    cons_thr.join()
 
-    # Step 3: Consume results from Kafka and send them to local-challenger
-    consume_and_post_results(endpoint, bench_id, expected_results=expected_results)
-
-    # Step 4: End benchmark
+    # Step 3: End benchmark
     end_resp = session.post(f"{endpoint}/api/end/{bench_id}")
     end_resp.raise_for_status()
     logger.info(f"✅ Benchmark {bench_id} completed.")
