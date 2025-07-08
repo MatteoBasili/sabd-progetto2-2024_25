@@ -5,6 +5,10 @@ import numpy as np
 from sklearn.cluster import DBSCAN       
 from pyflink.common import Row
 
+### For metrics evaluation ###
+#import time
+##############################
+
 from config import DBSCAN_EPS, DBSCAN_MIN_SAMPLES
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +50,10 @@ def process_json(raw_json: str) -> Row | None:
         batch_id, print_id, tile_id, saturated, centroids(json‑compact)
     """
     try:
+        ### For metrics evaluation ###
+        #start = time.perf_counter()
+        ##############################
+    
         data = json.loads(raw_json)
         required = {"batch_id", "print_id", "tile_id", "saturated", "outliers"}
         if not required.issubset(data):
@@ -57,13 +65,20 @@ def process_json(raw_json: str) -> Row | None:
 
         centroids_json = json.dumps(centroids, separators=(",", ":"))
 
-        return Row(
+        row = Row(
             int(data["batch_id"]),
             str(data["print_id"]),
             int(data["tile_id"]),
             int(data["saturated"]),
             centroids_json
         )
+
+        ### For metrics evaluation ###
+        #latency_ms = (time.perf_counter() - start) * 1_000
+        #logger.info(f"METRICS|Q3|batch={data['batch_id']}|latency_ms={latency_ms:.2f}")
+        ##############################
+
+        return row
 
     except Exception as exc:
         logger.error(f"[Q3] process_json error: {exc}")

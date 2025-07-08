@@ -8,6 +8,10 @@ from pyflink.common import Row, Types
 from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
 from pyflink.datastream.state import ListStateDescriptor
 
+### For metrics evaluation ###
+#import time
+##############################
+
 from config import (EMPTY_THRESHOLD, SATURATION_THRESHOLD,
                     DISTANCE_FACTOR, OUTLIER_THRESHOLD)
 
@@ -86,6 +90,10 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
     def process_element(self, value, ctx):
         # value is a dict with keys batch_id, print_id, tile_id, saturated, arr (numpy array)
         try:
+            ### For metrics evaluation ###
+            #start = time.perf_counter()
+            ##############################
+        
             window = list(self.window_state.get())  # retrieve state
 
             arr = value['arr']
@@ -115,6 +123,14 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
                 }
 
                 yield (row, json.dumps(q3_dict))
+                
+                ### For metrics evaluation ###
+                #latency_ms = (time.perf_counter() - start) * 1_000
+                #logger.info(
+                 #   f"METRICS|Q2|batch={value['batch_id']}|latency_ms={latency_ms:.2f}"
+                #)
+                ##############################
+                
                 return
 
             image3d = np.stack(window, axis=0)
@@ -146,6 +162,13 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
 
             # Output tuples (CSV Row, JSON string for Q3)
             yield (row, json.dumps(q3_dict))
+            
+            ### For metrics evaluation ###
+            #latency_ms = (time.perf_counter() - start) * 1_000
+            #logger.info(
+             #   f"METRICS|Q2|batch={value['batch_id']}|latency_ms={latency_ms:.2f}"
+            #)
+            ##############################
 
         except Exception as e:
             logger.error(f"[Q2][process_element] Error: {e}")
@@ -153,6 +176,10 @@ class SlidingWindowOutlierProcessFunction(KeyedProcessFunction):
 
 def decode_and_prepare(raw):
     try:
+        ### For metrics evaluation ###
+        #start = time.perf_counter()
+        ##############################
+    
         data = json.loads(raw)
         required = ["batch_id", "print_id", "tile_id", "tif", "saturated"]
         if not all(k in data for k in required):
@@ -168,13 +195,21 @@ def decode_and_prepare(raw):
         img = Image.open(io.BytesIO(tif_bytes))
         arr = np.array(img)
 
-        return {
+        result = {
             "batch_id": batch_id,
             "print_id": print_id,
             "tile_id": tile_id,
             "saturated": saturated,
             "arr": arr
         }
+        
+        ### For metrics evaluation ###
+        #latency_ms = (time.perf_counter() - start) * 1_000
+        #logger.info(f"METRICS|Q2|batch={batch_id}|latency_ms={latency_ms:.2f}")
+        ##############################
+
+        return result
+        
     except Exception as e:
         logger.error(f"[Q2] [decode_and_prepare] Error: {e}")
         return None

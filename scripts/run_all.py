@@ -16,12 +16,6 @@ import json
 
 JOB_NAME = "L-PBF Job"
 
-### For metrics evaluation ###
-OUTPUT = "./Results/analysis/metrics.csv"
-INTERVAL_IN_SECONDS = 1
-DURATION_IN_SECONDS = 300
-##############################
-
 
 def positive_int(value: str) -> int:
     ivalue = int(value)
@@ -123,21 +117,6 @@ def main():
     if limit is not None:
         client_cmd += f" --limit {limit}"
     run(client_cmd)
-    
-    ### For metrics evaluation ###
-    #run_background(client_cmd)
-    
-    #flink_evaluation_cmd = (
-     #   "python3 ./scripts/analysis/flink_metrics_collector.py "
-      #  f"--job-id {job_id} "
-       # "--host localhost --port 8081 "
-        #f"--interval {INTERVAL_IN_SECONDS} "
-        #"--metrics numRecordsInPerSecond,numRecordsOutPerSecond,latency "
-        #f"--output {OUTPUT} "
-        #f"--duration {DURATION_IN_SECONDS}"
-    #)
-    #run(flink_evaluation_cmd)
-    ##############################
 
 if __name__ == "__main__":
     main()

@@ -6,6 +6,10 @@ from PIL import Image
 import logging
 from pyflink.common import Row
 
+### For metrics evaluation ###
+#import time
+##############################
+
 from config import SATURATION_THRESHOLD
 
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +22,10 @@ def count_saturated(arr,
 
 def process_batch(raw):
     try:
+        ### For metrics evaluation ###
+        #start = time.perf_counter()
+        ##############################
+        
         data = json.loads(raw)
 
         required = ["batch_id", "print_id", "tile_id", "layer", "tif"]
@@ -48,6 +56,11 @@ def process_batch(raw):
             "tif": data["tif"],
             "saturated": str(saturated) 
         }
+        
+        ### For metrics evaluation ###
+        #latency_ms = (time.perf_counter() - start) * 1_000
+        #logger.info(f"METRICS|Q1|batch={batch_id}|latency_ms={latency_ms:.2f}")
+        ##############################
 
         return metrics, filtered_dict
 

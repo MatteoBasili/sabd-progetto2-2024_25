@@ -93,7 +93,7 @@ def produce_batches(session, endpoint, bench_id, producer, limit=None):
         producer.flush()
         logger.info(f"📤 Sent batch {produced} (layer {batch.get('layer')}) to Kafka")
         produced += 1
-        time.sleep(0.1)
+        time.sleep(1)
         
     logger.info(f"📦 Total batches produced: {produced}")
     return produced

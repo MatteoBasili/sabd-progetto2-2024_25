@@ -30,10 +30,6 @@ def main():
     config.set_string("pipeline.jars", "file:///opt/flink/plugins/kafka/flink-sql-connector-kafka-4.0.0-2.0.jar")
     config.set_string("state.backend", "rocksdb")
     config.set_string("state.checkpoints.dir", "file:///tmp/flink-checkpoints")
-    
-    ### For metrics evaluation ###
-    config.set_string("metrics.latency.interval", "1000")  # every 1 second
-    ##############################
 
     env = StreamExecutionEnvironment.get_execution_environment(configuration=config)
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
