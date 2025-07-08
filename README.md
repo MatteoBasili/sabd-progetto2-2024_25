@@ -105,7 +105,7 @@ The script performs the following steps:
 4. Starts the `l-pbf-client` container to request data from the LOCAL-CHALLENGER and stream it into the pipeline
 5. The output of Query 3 is automatically sent back to the LOCAL-CHALLENGER for benchmarking and performance evaluation
 
-> 🛠️ Optional: use the `--limit N` argument to restrict the number of image batches processed (useful for quick tests).
+> 🛠️ **Optional:** use the `--limit N` argument to restrict the number of image batches processed (useful for quick tests).
 > Example:
 ```bash
 python3 ./scripts/run_all.py --limit 50
