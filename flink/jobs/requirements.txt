@@ -1,0 +1,6 @@
+apache-flink==2.0.0
+pillow
+numpy
+scikit-learn
+scipy
+
