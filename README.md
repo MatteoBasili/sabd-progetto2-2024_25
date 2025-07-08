@@ -23,7 +23,7 @@ This project aims to develop a real-time distributed stream-processing applicati
 
 ---
 
-## 🧱 Architectural Diagram (DA RIVEDERE)
+## 🧱 Architectural Diagram
 
 [![System Architecture](Report/sabd_project2_architectural_diagram.png)](Report/sabd_project2_architectural_diagram.png)
 
@@ -49,7 +49,7 @@ This project aims to develop a real-time distributed stream-processing applicati
 
 ---
 
-## ⚙️ Setup and Execution (DA RIVEDERE)
+## ⚙️ Setup and Execution
 
 ### 🔧 Prerequisites
 
@@ -61,50 +61,55 @@ Make sure you have the following installed:
 - **Docker** ≥ 20.10  
 - **Docker Compose** ≥ 1.29  
 - [**Python**](https://www.python.org/) (recommended: version 3.8+)  
-- **Apache Flink** ≥
-- **Apache ZooKeeper** ≥
-- **Apache Kafka** ≥
 
----
+Install the necessary Python libraries with:
 
-Install Git Large File Storage (it is needed because the project uses files bigger than 100 MB)
+```bash
+pip install pandas requests openpyxl
+```
+
+Install Git Large File Storage (it is needed because the project uses file bigger than 100 MB)
 
 ```bash
 curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
 sudo apt-get install git-lfs
-git lfs install
 ```
----
 
 ### 🚀 Start environment
 
 ```bash
+git lfs install
 git clone https://github.com/MatteoBasili/sabd-progetto2-2024_25.git
 cd sabd-progetto2-2024_25
 git checkout main
 docker image load -i local-challenger/gc25cdocker.tar
+docker compose up --build -d
 ```
 
 Access services at:
-- **Apache NiFi UI:** http://localhost:8080/nifi
-- **HDFS Web UI:** http://localhost:9870
-- **Spark UI (job monitoring):** http://localhost:4040
-- **Grafana UI (visualization):** http://localhost:3000
+- **Apache Flink UI:** http://localhost:8081
+- **LOCAL-CHALLENGER Dashboard:** http://localhost:8866/dash
 
 ### 📦 Pipeline execution
 
-Run the entire pipeline (from data ingestion to exporting results) using the script `run_all.py`:
+Run the complete L-PBF processing pipeline (from image ingestion to query result export) using the script `run_all.py`:
 > 📂 **The script must be run from the project's root directory.**
 ```bash
 python3 ./scripts/run_all.py
 ```
 
-The script automatically:
-1. Creates Kafka topics
-2. Starts Flink jobs
-3. Starts the container responsible for writing the results in a separated directory (csv format)
-4. Starts the l-pbf-client container
-5. Sends the results of the third query to the local-challange container for performance analysis
+The script performs the following steps:
+1. Creates the required Kafka topics via the `topic-init` container
+2. Starts the Flink job in detached mode and waits until all operators are fully running
+3. Launches the `csv-writer` container in the background to write query results to CSV
+4. Starts the `l-pbf-client` container to request data from the LOCAL-CHALLENGER and stream it into the pipeline
+5. The output of Query 3 is automatically sent back to the LOCAL-CHALLENGER for benchmarking and performance evaluation
+
+> 🛠️ Optional: use the --limit N argument to restrict the number of image batches processed (useful for quick tests).
+> Example:
+```bash
+python3 ./scripts/run_all.py --limit 50
+```
 
 ---
 
@@ -162,19 +167,21 @@ Each query corresponds to specific stages in the pipeline and produces structure
 
 ---
 
-## 📈 Performance Analysis (DA RIVEDERE)
-The provided container local-challenge evaluates the following metrics:
-- **Latency:**: time taken to process each tile.
-- **Throughput:** expressed as number of tiles processed per unit time.
+## 📈 Performance Analysis
+For each query, we conducted an experimental analysis of processing times based on real execution logs.
+- **Metrics collected:** end-to-end latency and throughput, extracted from application logs using a custom logging format.
+- **Statistical evaluation:** average, max, and percentile latencies (50th, 95th, 99th) computed from parsed logs over multiple batch sizes (100, 200, 300).
+- **Throughput analysis:** defined as number of batches processed divided by the total time interval between the first and last processed batch.
+- **Reproducibility:** each run was performed under controlled conditions, with no background load.
 
 ---
 
-## 📤 Output and Results (DA RIVEDERE)
+## 📤 Output and Results
 
 - All CSV results are in:
-> 📂 _Results/_
-- Statistical analysis of processing times is in:
-> 📂 _Results/analysis_
+> 📂 _Results/csv/_
+- Statistical analysis of performance metrics are in::
+> 📂 _Results/analysis/_
 
 ---
 
