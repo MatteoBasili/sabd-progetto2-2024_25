@@ -29,23 +29,23 @@ This project aims to develop a real-time distributed stream-processing applicati
 
 ---
 
-## 📁 Repository Structure (DA RICONTROLLARE)
+## 📁 Repository Structure
 
 | Folder / File                    | Description                                                                 |
 |---------------------------------|-----------------------------------------------------------------------------|
 | `Report/`                       | Technical report in IEEE proceedings format                                |
-| `Results/`                      | Query results in CSV format                                                |
-| `Results/analysis/`             | Experimental processing times                                              |
-| `Results/csv/`                 | CSV output of queries Q1, Q2, Q3                                           |
+| `Results/`                      | Query results                                                       |
+| `Results/analysis/`             | Performance metrics (latency & throughput)                                              |
+| `Results/csv/`                  | CSV output of queries Q1, Q2, Q3                                           |
 | `client/`                       | Kafka client to interface with the Local Challenger and Flink pipeline      |
-| `csv-writer/`                   | Scripts related to the memorization of the queries'results as a csv file|
-| `flink/`                        | Scripts related to Flink initialization and queries computation                                |
-| `kafka/init/`                   | Scripts for Kafka initialization and topic creations                                |
-| `local-challenger/`             | Provided dataset                                |
-| `scripts/`                      | Scripts for ingestion, processing (Spark RDD/DataFrame/SQL), export, and charts |
+| `csv-writer/`                   | Writes query outputs to CSV                                                   |
+| `flink/`                        | Flink queries and Docker cluster configuration                                |
+| `kafka/init/`                   | Used for Kafka topic creation                                |
+| `local-challenger/`             | LOCAL-CHALLENGER resources.                                |
+| `scripts/`                      | Execution, cleanup, and analysis scripts                                |
 | `specification/`                | Full project specification provided by professors                         |
-| `.gitattributes`                | Necessary for loading the file local-challenger/gc25cdocker.tar                   |
-| `docker-compose.yml`           | Complete cluster configuration (Flink, Kafka, Local Challenger, etc.)                  |
+| `.gitattributes`                | Required to run the LOCAL-CHALLENGER in the repository                   |
+| `docker-compose.yml`            | Complete cluster configuration (Flink, Kafka, Local Challenger, etc.)                  |
 
 ---
 
